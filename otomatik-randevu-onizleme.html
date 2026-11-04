@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-2.5">
+  <div class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-2xl p-3.5 shadow-sm">
+    <!-- Üst Başlık ve Sekmeler -->
+    <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-3 border-b border-[var(--border)]">
+      <div>
+        <div class="flex items-center gap-1.5">
+          <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 text-xs font-bold">🤝 3'lü Mutabakat &amp; Otomatik Saat Kilitleme</span>
+          <h2 class="text-sm font-bold text-[var(--foreground)]">Siteden Başlayan WhatsApp Randevu Müzakere Sistemi</h2>
+        </div>
+      </div>
+      <div class="flex gap-1 bg-[var(--secondary)] p-1 rounded-xl">
+        <button type="button" id="tabStep1" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer transition">
+          1️⃣ Siteden Başlat &amp; İrade Onayı
+        </button>
+        <button type="button" id="tabStep2" class="px-2.5 py-1 rounded-lg text-xs font-bold text-[var(--foreground)] cursor-pointer transition">
+          2️⃣ 3'lü Mutabakat Masası (<span id="badgePendingCount">1</span>)
+        </button>
+        <button type="button" id="tabStep3" class="px-2.5 py-1 rounded-lg text-xs font-bold text-[var(--foreground)] cursor-pointer transition">
+          3️⃣ Sitedeki Takvim &amp; Mailler
+        </button>
+      </div>
+    </div>
+
+    <!-- SEKME 1: SİTEDE DANIŞAN BAŞLANGICI + KENDİ İRADESİYLE KATILIM ONAYI + İLK TARİH/SAAT ÖNERİSİ -->
+    <div id="viewStep1" class="grid grid-cols-1 md:grid-cols-12 gap-3">
+      <div class="md:col-span-6 space-y-2">
+        <div class="text-xs font-bold text-emerald-500">ADIM 1: Danışan Sitenizden Randevu Diyaloğunu Başlatır</div>
+        <div class="grid grid-cols-2 gap-2">
+          <input type="text" id="inpClientName" value="Zeynep Kaya" placeholder="Adınız Soyadınız *" class="w-full px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-xs font-semibold">
+          <input type="tel" id="inpClientPhone" value="0544 333 44 55" placeholder="WhatsApp No (05XX...) *" class="w-full px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-xs font-semibold">
+        </div>
+
+        <!-- Kendi İradesiyle Gruba Katılım Hatırlatması ve Zorunlu Onay Kutusu -->
+        <div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 space-y-1.5">
+          <div class="text-xs font-bold text-amber-500">📜 Kendi İradenizle WhatsApp Grubuna Katılım Beyanı</div>
+          <p class="text-xs text-[var(--foreground)] leading-relaxed">
+            Randevu gün ve saatinin belirlenmesi amacıyla; danışman ve ofis sekreterinin yer aldığı WhatsApp koordinasyon grubuna <b>kendi hür irademle katıldığımı</b>, randevu kesinleşene kadar bu grupta tarih/saat planlaması yapılacağını okudum ve onaylıyorum.
+          </p>
+          <label class="flex items-center gap-2 pt-1 cursor-pointer select-none">
+            <input type="checkbox" id="chkVoluntaryConsent" class="w-4 h-4 accent-emerald-600 rounded cursor-pointer">
+            <span class="text-xs font-bold text-emerald-500">Okudum, kendi irademle WhatsApp grubuna katılmayı onaylıyorum *</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="md:col-span-6 bg-[var(--background)] border border-[var(--border)] rounded-xl p-3 flex flex-col justify-between space-y-2">
+        <div class="space-y-2">
+          <div class="text-xs font-bold text-[var(--muted-foreground)]">ADIM 2: Danışan Gruba Katılır ve İlk Gün/Saat Önerisini Söyler</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-[var(--muted-foreground)] mb-1">Önerilen Gün:</label>
+              <input type="date" id="inpPropDate" class="w-full px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold">
+            </div>
+            <div>
+              <label class="block text-xs text-[var(--muted-foreground)] mb-1">Önerilen Saat (Açık Saatler):</label>
+              <select id="inpPropTime" class="w-full px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold"></select>
+            </div>
+          </div>
+          <div id="consentError" class="hidden text-xs text-red-500 font-bold"></div>
+        </div>
+
+        <button type="button" id="btnStartDialogue" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow cursor-pointer transition">
+          💬 İrade Onayını Kaydet, Gruba Katıl ve Tarih/Saat Önerisini Başlat ➔
+        </button>
+      </div>
+    </div>
+
+    <!-- SEKME 2: 3 KİŞİLİK MUTABAKAT MASASI (DANIŞAN + DANIŞMAN + SEKRETER) -->
+    <div id="viewStep2" class="hidden grid grid-cols-1 md:grid-cols-12 gap-3">
+      <!-- Sol: Aktif Müzakere ve 3 Kişinin Onay Durumu -->
+      <div class="md:col-span-7 bg-[var(--background)] border border-[var(--border)] rounded-xl p-3 space-y-2.5">
+        <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+          <div>
+            <span class="text-xs font-bold text-emerald-500" id="negClientTitle">👤 Zeynep Kaya (#RNV-408)</span>
+            <div class="text-xs text-[var(--muted-foreground)]" id="negConsentBadge">✔ Kendi iradesiyle katılım onayı alındı</div>
+          </div>
+          <span id="negOverallBadge" class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 text-xs font-bold">
+            ⏳ 3'lü Mutabakat Bekleniyor
+          </span>
+        </div>
+
+        <!-- Şu An Masadaki Tarih ve Saat Önerisi -->
+        <div class="p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between">
+          <div>
+            <div class="text-xs text-[var(--muted-foreground)]">Şu An Üzerinde Konuşulan Gün &amp; Saat Önerisi:</div>
+            <div class="text-sm font-bold text-[var(--foreground)]" id="negCurrentProposal">📅 Bugün — Saat 14:00</div>
+          </div>
+          <div class="text-xs text-right text-[var(--muted-foreground)]">
+            Öneren:<br><b class="text-emerald-500" id="negProposedBy">Danışan</b>
+          </div>
+        </div>
+
+        <!-- 3 Kişinin (Danışan, Danışman, Sekreter) Kabul / Red Durumu -->
+        <div class="space-y-1.5">
+          <div class="text-xs font-bold text-[var(--muted-foreground)]">3 KİŞİ MUTABIK KALANA KADAR ONAY DURUMU:</div>
+
+          <!-- 1. Danışan -->
+          <div class="flex items-center justify-between p-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs">
+            <div>
+              <b>1. Danışan (<span id="lblRoleClient">Zeynep Kaya</span>):</b>
+              <span id="statusClient" class="ml-1 font-bold text-emerald-500">✅ Kabul Etti</span>
+            </div>
+            <button type="button" id="btnApproveClient" class="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold cursor-pointer">
+              ✅ Danışan Kabul
+            </button>
+          </div>
+
+          <!-- 2. Danışman (Siz) -->
+          <div class="flex items-center justify-between p-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs">
+            <div>
+              <b>2. Danışman (Siz):</b>
+              <span id="statusConsultant" class="ml-1 font-bold text-amber-500">⏳ Onay Bekleniyor</span>
+            </div>
+            <button type="button" id="btnApproveConsultant" class="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold cursor-pointer">
+              ✅ Ben Kabul Ediyorum
+            </button>
+          </div>
+
+          <!-- 3. Sekreter Hanım -->
+          <div class="flex items-center justify-between p-2 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs">
+            <div>
+              <b>3. Sekreter Hanım:</b>
+              <span id="statusSecretary" class="ml-1 font-bold text-amber-500">⏳ Onay Bekleniyor</span>
+            </div>
+            <button type="button" id="btnApproveSecretary" class="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold cursor-pointer">
+              ✅ Sekreter Kabul Etti
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sağ: Birisi Onaylamazsa Yeni Tarih/Saat Önerme + WhatsApp Diyalog Geçmişi -->
+      <div class="md:col-span-5 bg-[var(--background)] border border-[var(--border)] rounded-xl p-3 flex flex-col justify-between space-y-2">
+        <div class="space-y-2">
+          <div class="text-xs font-bold text-amber-500">🔄 Uygun Değilse Başka Tarih &amp; Saat Öner</div>
+          <p class="text-xs text-[var(--muted-foreground)]">
+            Siz, Sekreter Hanım veya Danışan bu saati uygun bulmazsa yeni bir gün/saat önerir; 3 kişi mutabık kalana kadar devam eder:
+          </p>
+          <select id="counterWho" class="w-full px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold">
+            <option value="Danışman (Siz)">👨‍⚕️ Öneren: Danışman (Siz)</option>
+            <option value="Sekreter Hanım">🏢 Öneren: Sekreter Hanım</option>
+            <option value="Danışan">👤 Öneren: Danışan</option>
+          </select>
+          <div class="grid grid-cols-2 gap-1.5">
+            <input type="date" id="counterDate" class="w-full px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs">
+            <select id="counterTime" class="w-full px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold"></select>
+          </div>
+          <button type="button" id="btnSendCounterProposal" class="w-full py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer transition">
+            🔄 Bu Tarihi Öner (Diğer İki Kişinin Onayına Sun)
+          </button>
+        </div>
+
+        <!-- WhatsApp Müzakere Özeti -->
+        <div class="p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] max-h-28 overflow-y-auto space-y-1" id="chatHistoryBox"></div>
+      </div>
+    </div>
+
+    <!-- SEKME 3: SİTEDE SABİTLENEN (KAPATILAN) SAATLER VE OTOMATİK MAİL KAYITLARI -->
+    <div id="viewStep3" class="hidden grid grid-cols-1 md:grid-cols-12 gap-3">
+      <div class="md:col-span-6 bg-[var(--background)] border border-[var(--border)] rounded-xl p-3 space-y-2">
+        <div class="text-xs font-bold text-emerald-500">🔒 Sitenizdeki Canlı Takvim (Mutabık Kalınan Saatler Kilitlenir)</div>
+        <div id="siteCalendarSlots" class="grid grid-cols-3 gap-2 pt-1"></div>
+      </div>
+
+      <div class="md:col-span-6 bg-[var(--background)] border border-[var(--border)] rounded-xl p-3 space-y-2">
+        <div class="text-xs font-bold text-blue-500">📧 Otomatik Gönderilen E-postalar (Danışman &amp; Sekreter)</div>
+        <div id="sentEmailsBox" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      document.getElementById('inpPropDate').value = todayIso;
+      document.getElementById('counterDate').value = todayIso;
+
+      const allTimes = ['09:00', '10:00', '11:00', '14:00', '15:30', '17:00'];
+      let lockedSlots = ['10:00']; // Sitede önceden kesinleşmiş/kapatılmış örnek saat
+
+      let negotiation = {
+        code: 'RNV-408',
+        clientName: 'Zeynep Kaya',
+        clientPhone: '0544 333 44 55',
+        consentGiven: true,
+        consentTime: 'Bugün 10:15',
+        date: todayIso,
+        time: '14:00',
+        proposedBy: 'Danışan',
+        clientOk: true,
+        consultantOk: false,
+        secretaryOk: false,
+        finalized: false,
+        history: [
+          '✔ Zeynep Kaya kendi iradesiyle gruba katılım onayını verdi ve WhatsApp grubuna katıldı.',
+          '💬 Danışan (Zeynep Kaya): "' + todayIso + ' Saat 14:00" için randevu talep etti.'
+        ]
+      };
+
+      let emails = [
+        {
+          to: 'danisman@siteniz.com, sekreter@ofis.com',
+          subject: 'Kesinleşen Randevu: Ahmet Demir (10:00)',
+          body: '3\'lü mutabakat sağlandı ve sitede 10:00 saati kapatıldı.'
+        }
+      ];
+
+      function switchTab(tabId) {
+        ['tabStep1', 'tabStep2', 'tabStep3'].forEach(id => {
+          const b = document.getElementById(id);
+          b.className = id === tabId
+            ? 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer transition'
+            : 'px-2.5 py-1 rounded-lg text-xs font-bold text-[var(--foreground)] cursor-pointer transition';
+        });
+        document.getElementById('viewStep1').classList.toggle('hidden', tabId !== 'tabStep1');
+        document.getElementById('viewStep2').classList.toggle('hidden', tabId !== 'tabStep2');
+        document.getElementById('viewStep3').classList.toggle('hidden', tabId !== 'tabStep3');
+        renderAll();
+      }
+
+      document.getElementById('tabStep1').addEventListener('click', () => switchTab('tabStep1'));
+      document.getElementById('tabStep2').addEventListener('click', () => switchTab('tabStep2'));
+      document.getElementById('tabStep3').addEventListener('click', () => switchTab('tabStep3'));
+
+      function populateTimeSelects() {
+        ['inpPropTime', 'counterTime'].forEach(selId => {
+          const sel = document.getElementById(selId);
+          const currentVal = sel.value || '14:00';
+          sel.innerHTML = '';
+          allTimes.forEach(t => {
+            const isLocked = lockedSlots.includes(t);
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.disabled = isLocked;
+            opt.textContent = isLocked ? `${t} (Sitede Kapalı / Dolu)` : `${t} (Müsait)`;
+            if (t === currentVal && !isLocked) opt.selected = true;
+            sel.appendChild(opt);
+          });
+        });
+      }
+
+      function checkAndFinalizeConsensus() {
+        if (!negotiation.finalized && negotiation.clientOk && negotiation.consultantOk && negotiation.secretaryOk) {
+          negotiation.finalized = true;
+          if (!lockedSlots.includes(negotiation.time)) {
+            lockedSlots.push(negotiation.time);
+          }
+          negotiation.history.unshift(
+            `🎉 3'LÜ MUTABAKAT SAĞLANDI! (${negotiation.date} Saat ${negotiation.time}) otomatik onaylandı, sitede saat kapatıldı ve Danışman + Sekreter Hanıma e-posta gönderildi!`
+          );
+          emails.unshift({
+            to: 'danisman@siteniz.com, sekreter@ofis.com',
+            subject: `✅ Onaylanan Randevu: ${negotiation.clientName} — ${negotiation.date} ${negotiation.time} (#${negotiation.code})`,
+            body: `Danışan (${negotiation.clientName}), Danışman ve Sekreter Hanım ${negotiation.date} saat ${negotiation.time} üzerinde mutabık kaldı. Sitedeki takvimde bu saat otomatik olarak kapatıldı.`
+          });
+        }
+      }
+
+      function renderAll() {
+        populateTimeSelects();
+
+        document.getElementById('negClientTitle').textContent = `👤 ${negotiation.clientName} (#${negotiation.code})`;
+        document.getElementById('lblRoleClient').textContent = negotiation.clientName;
+        document.getElementById('negCurrentProposal').textContent = `📅 ${negotiation.date} — Saat ${negotiation.time}`;
+        document.getElementById('negProposedBy').textContent = negotiation.proposedBy;
+
+        const overall = document.getElementById('negOverallBadge');
+        if (negotiation.finalized) {
+          overall.className = 'px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 text-xs font-bold';
+          overall.textContent = '✅ 3 Kişi Mutabık Kaldı • Sitede Sabitlendi & Mail Atıldı';
+          document.getElementById('badgePendingCount').textContent = 'Onaylandı';
+        } else {
+          overall.className = 'px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 text-xs font-bold';
+          overall.textContent = '⏳ 3\'lü Mutabakat Bekleniyor';
+          document.getElementById('badgePendingCount').textContent = '1 Aktif';
+        }
+
+        const setStatusEl = (id, ok) => {
+          const el = document.getElementById(id);
+          el.className = 'ml-1 font-bold ' + (ok ? 'text-emerald-500' : 'text-amber-500');
+          el.textContent = ok ? '✅ Kabul Etti' : '⏳ Onay Bekleniyor';
+        };
+        setStatusEl('statusClient', negotiation.clientOk);
+        setStatusEl('statusConsultant', negotiation.consultantOk);
+        setStatusEl('statusSecretary', negotiation.secretaryOk);
+
+        const chatBox = document.getElementById('chatHistoryBox');
+        chatBox.innerHTML = '';
+        negotiation.history.forEach(msg => {
+          const d = document.createElement('div');
+          d.className = 'text-xs text-[var(--foreground)] border-b border-[var(--border)] pb-1 last:border-none';
+          d.textContent = msg;
+          chatBox.appendChild(d);
+        });
+
+        // Sekme 3: Sitedeki Takvim
+        const calBox = document.getElementById('siteCalendarSlots');
+        calBox.innerHTML = '';
+        allTimes.forEach(t => {
+          const isLocked = lockedSlots.includes(t);
+          const card = document.createElement('div');
+          card.className = 'p-2 rounded-xl border text-center text-xs font-bold ' +
+            (isLocked ? 'border-red-500/40 bg-red-500/10 text-red-500' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500');
+          card.innerHTML = `<div>Saat ${t}</div><div class="text-xs font-normal">${isLocked ? '🔒 Sabitlendi / Dolu' : '🟢 Açık'}</div>`;
+          calBox.appendChild(card);
+        });
+
+        // Sekme 3: Gönderilen Mailler
+        const mailBox = document.getElementById('sentEmailsBox');
+        mailBox.innerHTML = '';
+        emails.forEach(m => {
+          const item = document.createElement('div');
+          item.className = 'p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs space-y-0.5';
+          item.innerHTML = `
+            <div class="font-bold text-emerald-500">${m.subject}</div>
+            <div class="text-xs text-[var(--muted-foreground)]">Alıcılar: ${m.to}</div>
+            <div class="text-xs text-[var(--foreground)]">${m.body}</div>
+          `;
+          mailBox.appendChild(item);
+        });
+      }
+
+      // Adım 1: Siteden Diyaloğu Başlat
+      document.getElementById('btnStartDialogue').addEventListener('click', () => {
+        const chk = document.getElementById('chkVoluntaryConsent');
+        const err = document.getElementById('consentError');
+        if (!chk.checked) {
+          err.textContent = '⚠️ Lütfen önce kendi iradenizle WhatsApp grubuna katıldığınızı belirten onay kutusunu işaretleyin.';
+          err.classList.remove('hidden');
+          return;
+        }
+        err.classList.add('hidden');
+
+        const name  = document.getElementById('inpClientName').value.trim() || 'Danışan';
+        const phone = document.getElementById('inpClientPhone').value.trim() || '0544 000 00 00';
+        const date  = document.getElementById('inpPropDate').value || todayIso;
+        const time  = document.getElementById('inpPropTime').value || '14:00';
+
+        negotiation = {
+          code: 'RNV-' + Math.floor(100 + Math.random() * 900),
+          clientName: name,
+          clientPhone: phone,
+          consentGiven: true,
+          date,
+          time,
+          proposedBy: 'Danışan (' + name + ')',
+          clientOk: true,
+          consultantOk: false,
+          secretaryOk: false,
+          finalized: false,
+          history: [
+            `💬 Danışan (${name}) "${date} Saat ${time}" için randevu önerdi. Sizin ve Sekreter Hanımın onayı bekleniyor.`,
+            `✔ ${name} kendi iradesiyle WhatsApp grubuna katılım beyanını onayladı ve gruba katıldı.`
+          ]
+        };
+        renderAll();
+        switchTab('tabStep2');
+      });
+
+      // 3 Kişinin Kabul Butonları
+      document.getElementById('btnApproveClient').addEventListener('click', () => {
+        negotiation.clientOk = true;
+        negotiation.history.unshift(`✅ Danışan (${negotiation.clientName}), ${negotiation.date} Saat ${negotiation.time} önerisini kabul etti.`);
+        checkAndFinalizeConsensus();
+        renderAll();
+      });
+
+      document.getElementById('btnApproveConsultant').addEventListener('click', () => {
+        negotiation.consultantOk = true;
+        negotiation.history.unshift(`✅ Danışman (Siz), ${negotiation.date} Saat ${negotiation.time} önerisini kabul ettiniz.`);
+        checkAndFinalizeConsensus();
+        renderAll();
+      });
+
+      document.getElementById('btnApproveSecretary').addEventListener('click', () => {
+        negotiation.secretaryOk = true;
+        negotiation.history.unshift(`✅ Sekreter Hanım, ${negotiation.date} Saat ${negotiation.time} önerisini ve odayı onayladı.`);
+        checkAndFinalizeConsensus();
+        renderAll();
+      });
+
+      // Birisi Onaylamazsa Başka Tarih ve Saat Önerme
+      document.getElementById('btnSendCounterProposal').addEventListener('click', () => {
+        const who  = document.getElementById('counterWho').value;
+        const date = document.getElementById('counterDate').value || todayIso;
+        const time = document.getElementById('counterTime').value || '15:30';
+
+        negotiation.date = date;
+        negotiation.time = time;
+        negotiation.proposedBy = who;
+        negotiation.finalized = false;
+
+        // Yeni öneriyi yapan kişi kabul etmiş sayılır, diğer 2 kişinin onayı beklenir
+        negotiation.clientOk     = (who === 'Danışan');
+        negotiation.consultantOk = (who === 'Danışman (Siz)');
+        negotiation.secretaryOk  = (who === 'Sekreter Hanım');
+
+        negotiation.history.unshift(
+          `🔄 ${who} önceki saati uygun bulmadı ve YENİ ÖNERİ yaptı: "${date} Saat ${time}". Diğerlerinin onayı bekleniyor.`
+        );
+        renderAll();
+      });
+
+      renderAll();
+    })();
+  </script>
+</body>
+</html>
