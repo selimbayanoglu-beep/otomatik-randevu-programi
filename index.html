@@ -65,9 +65,30 @@
           <div id="consentError" class="hidden text-xs text-red-500 font-bold"></div>
         </div>
 
-        <button type="button" id="btnStartDialogue" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow cursor-pointer transition">
-          💬 İrade Onayını Kaydet, Gruba Katıl ve Tarih/Saat Önerisini Başlat ➔
+        <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-[var(--foreground)] space-y-1">
+          <div class="font-bold text-emerald-500 flex items-center justify-between">
+            <span>🔗 Bağlı WhatsApp Grubu:</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 font-bold">Aktif &amp; Doğrulandı</span>
+          </div>
+          <div class="text-[11px] font-mono text-[var(--muted-foreground)] break-all">https://chat.whatsapp.com/I4fDwRd1m010wmC1Ix7Ib2...</div>
+        </div>
+
+        <button type="button" id="btnStartDialogue" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow cursor-pointer transition flex items-center justify-center gap-1.5">
+          <span>💬 İrade Onayını Kaydet, Gruba Katıl ve Tarih/Saat Önerisini Başlat ➔</span>
         </button>
+
+        <!-- WhatsApp Yönlendirme ve Kopyalama Bildirim Kartı -->
+        <div id="waRedirectCard" class="hidden p-3 rounded-xl bg-emerald-500/15 border-2 border-emerald-500 space-y-2">
+          <div class="text-xs font-bold text-emerald-600 flex items-center gap-1.5">
+            <span>🎉 Gerçek WhatsApp Grubuna Yönlendirildiniz!</span>
+          </div>
+          <p class="text-xs text-[var(--foreground)]">
+            Hazır randevu ve mutabakat mesajınız panonuza kopyalandı. WhatsApp açılmadıysa aşağıdaki butona dokunarak doğrudan gruba girebilirsiniz:
+          </p>
+          <a id="btnDirectWaLink" href="https://chat.whatsapp.com/I4fDwRd1m010wmC1Ix7Ib2?s=cl&p=a&iam=2" target="_blank" class="block text-center py-2 px-3 rounded-lg bg-[#25D366] hover:bg-[#1ebc59] text-white font-bold text-xs shadow transition">
+            📲 Gerçek WhatsApp Grubunu Aç (Dokunun)
+          </a>
+        </div>
       </div>
     </div>
 
@@ -359,8 +380,22 @@
             `✔ ${name} kendi iradesiyle WhatsApp grubuna katılım beyanını onayladı ve gruba katıldı.`
           ]
         };
+        const realWaLink = "https://chat.whatsapp.com/I4fDwRd1m010wmC1Ix7Ib2?s=cl&p=a&iam=2";
+        const introMsg = `Merhaba, ben ${name}.\nKendi hür irademle koordinasyon grubuna katıldım.\n📅 Randevu Önerim: ${date} saat ${time}\n🔑 Takip Kodu: #${negotiation.code}\n\nBu tarih ve saat sizler ve ofis için uygun mudur?`;
+
+        // Panoya kopyala
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(introMsg).catch(() => {});
+        }
+
+        // WhatsApp grubunu yeni pencerede aç
+        window.open(realWaLink, '_blank');
+
+        // Yönlendirme kartını görünür yap
+        document.getElementById('waRedirectCard').classList.remove('hidden');
+
         renderAll();
-        switchTab('tabStep2');
+        setTimeout(() => switchTab('tabStep2'), 1200);
       });
 
       // 3 Kişinin Kabul Butonları

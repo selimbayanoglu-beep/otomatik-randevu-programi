@@ -55,7 +55,7 @@ class Otomatik_Randevu_Programi {
             'secretary_email'     => 'sekreter@ofis.com',
             'office_name'         => 'Merkez Danışmanlık Ofisi',
             'whatsapp_group_name' => 'Randevu & Ofis Koordinasyon Grubu',
-            'whatsapp_group_link' => 'https://chat.whatsapp.com/ORNEK_GRUP_DAVET_KODU',
+            'whatsapp_group_link' => 'https://chat.whatsapp.com/I4fDwRd1m010wmC1Ix7Ib2?s=cl&p=a&iam=2',
             'whatsapp_group_id'   => '',
             'whatsapp_api_url'    => '',
             'whatsapp_api_token'  => '',
