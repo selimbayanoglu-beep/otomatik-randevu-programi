@@ -37,6 +37,113 @@ class Otomatik_Randevu_Programi {
 
         add_action('wp_ajax_orp_lookup_appointment', array($this, 'ajax_lookup_appointment'));
         add_action('wp_ajax_nopriv_orp_lookup_appointment', array($this, 'ajax_lookup_appointment'));
+
+        // Hermes Agent & Dış Webhook Entegrasyonu
+        add_action('rest_api_init', array($this, 'register_hermes_routes'));
+        add_action('wp_ajax_orp_hermes_finalize', array($this, 'ajax_hermes_finalize'));
+        add_action('wp_ajax_nopriv_orp_hermes_finalize', array($this, 'ajax_hermes_finalize'));
+    }
+
+    /**
+     * Hermes Agent için REST API Uç Noktası
+     */
+    public function register_hermes_routes() {
+        register_rest_route('otomatik-randevu/v1', '/finalize', array(
+            'methods'             => 'POST',
+            'callback'            => array($this, 'rest_hermes_finalize'),
+            'permission_callback' => '__return_true'
+        ));
+    }
+
+    public function rest_hermes_finalize($request) {
+        $params = $request->get_json_params();
+        if (empty($params)) {
+            $params = $request->get_params();
+        }
+        return $this->process_hermes_consensus($params);
+    }
+
+    public function ajax_hermes_finalize() {
+        $params = $_POST;
+        $res = $this->process_hermes_consensus($params);
+        if ($res->get_status() === 200) {
+            wp_send_json_success($res->get_data());
+        } else {
+            wp_send_json_error($res->get_data());
+        }
+    }
+
+    private function process_hermes_consensus($params) {
+        global $wpdb;
+        $code  = isset($params['booking_code']) ? ltrim(strtoupper(sanitize_text_field($params['booking_code'])), '#') : '';
+        $date  = isset($params['date']) ? sanitize_text_field($params['date']) : '';
+        $time  = isset($params['time']) ? sanitize_text_field($params['time']) : '';
+        $name  = isset($params['client_name']) ? sanitize_text_field($params['client_name']) : 'Danışan';
+        $phone = isset($params['client_phone']) ? sanitize_text_field($params['client_phone']) : '';
+
+        if (empty($date) || empty($time)) {
+            return new WP_REST_Response(array('success' => false, 'message' => 'Tarih ve saat parametresi zorunludur.'), 400);
+        }
+
+        // Mevcut takip kodu varsa onu güncelle, yoksa yeni kayıt oluşturup kilitle
+        $row = null;
+        if (!empty($code)) {
+            $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table_name} WHERE booking_code = %s", $code), ARRAY_A);
+        }
+
+        $logs = array(
+            array('time' => current_time('mysql'), 'by' => 'Hermes Agent', 'action' => "WhatsApp üzerinden 3 taraf mutabık kaldı: $date saat $time onaylandı.")
+        );
+
+        if ($row) {
+            $wpdb->update($this->table_name, array(
+                'appointment_date' => $date,
+                'appointment_time' => $time,
+                'client_ok'        => 1,
+                'consultant_ok'    => 1,
+                'secretary_ok'     => 1,
+                'status'           => 'approved',
+                'proposal_log'     => wp_json_encode($logs, JSON_UNESCAPED_UNICODE)
+            ), array('id' => $row['id']));
+            $apt = array_merge($row, array('appointment_date' => $date, 'appointment_time' => $time));
+            $this->send_consensus_emails($apt);
+            $booking_code = $row['booking_code'];
+        } else {
+            $booking_code = !empty($code) ? $code : 'RNV-' . strtoupper(wp_generate_password(4, false, false));
+            $settings = $this->get_settings();
+            $apt = array(
+                'booking_code'      => $booking_code,
+                'client_name'       => $name,
+                'client_phone'      => $phone,
+                'client_email'      => '',
+                'voluntary_consent' => 1,
+                'consultant_target' => 1,
+                'service_id'        => 'yuz_yuze_ofis',
+                'service_name'      => 'Danışmanlık Seansı',
+                'session_mode'      => 'Ofiste Yüz Yüze',
+                'appointment_date'  => $date,
+                'appointment_time'  => $time,
+                'duration_minutes'  => (int)$settings['slot_duration'],
+                'client_notes'      => 'Hermes Agent WhatsApp mutabakatı ile otomatik oluşturuldu.',
+                'proposed_by'       => 'Hermes Agent',
+                'client_ok'         => 1,
+                'consultant_ok'     => 1,
+                'secretary_ok'      => 1,
+                'proposal_log'      => wp_json_encode($logs, JSON_UNESCAPED_UNICODE),
+                'group_status'      => 'in_group',
+                'status'            => 'approved',
+                'emails_sent'       => 1,
+                'created_at'        => current_time('mysql')
+            );
+            $wpdb->insert($this->table_name, $apt);
+            $this->send_consensus_emails($apt);
+        }
+
+        return new WP_REST_Response(array(
+            'success'      => true,
+            'booking_code' => $booking_code,
+            'message'      => "Randevu (#$booking_code) $date $time için kesinleştirildi, sitede kilitlendi ve bildirim mailleri gönderildi."
+        ), 200);
     }
 
     /**
