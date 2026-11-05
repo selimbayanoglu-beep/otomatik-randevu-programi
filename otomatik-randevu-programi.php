@@ -48,8 +48,8 @@ class Otomatik_Randevu_Programi {
         add_action('wp_ajax_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
         add_action('wp_ajax_nopriv_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
 
-        // Menüdeki Randevu Linkini Otomatik Yeni Sayfaya Yönlendir
-        add_action('wp_footer', array($this, 'auto_redirect_menu_link'));
+        // Ana Sayfadaki Eski Randevu Bölümünü Yeni Sistem ile Değiştir
+        add_action('wp_footer', array($this, 'replace_homepage_booking_section'));
 
         // Hermes Agent & Dış Webhook Entegrasyonu
         add_action('rest_api_init', array($this, 'register_hermes_routes'));
@@ -1668,35 +1668,57 @@ class Otomatik_Randevu_Programi {
     }
 
     /**
-     * Sitedeki Menü ve Butonlardaki Randevu Linklerini Otomatik Yeni Sayfaya Yönlendirir
+     * Ana Sayfadaki Eski Randevu Bölümünü Doğrudan Yeni 3'lü Mutabakat Sistemi ile Değiştirir
      */
-    public function auto_redirect_menu_link() {
+    public function replace_homepage_booking_section() {
+        // Eğer zaten [otomatik_randevu] kısa kodu sayfada varsa tekrar enjekte etme
+        global $post;
+        if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'otomatik_randevu')) {
+            return;
+        }
+
+        $app_html = $this->render_booking_shortcode(array());
         ?>
         <script>
         (function() {
-            function rerouteLinks() {
-                var links = document.querySelectorAll('a[href="#randevu"], a[href*="#randevu"], nav.drawer a, header a, a.button');
-                links.forEach(function(el) {
-                    var txt = (el.textContent || '').toLowerCase();
-                    var href = el.getAttribute('href') || '';
-                    if (txt.includes('randevu') || href === '#randevu' || href.endsWith('#randevu')) {
-                        if (!href.includes('/randevu-al/')) {
-                            el.setAttribute('href', 'https://selimbayanoglu.com.tr/randevu-al/');
-                            el.onclick = function(e) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                window.location.href = 'https://selimbayanoglu.com.tr/randevu-al/';
-                            };
-                        }
+            function injectBookingApp() {
+                var section = document.getElementById('randevu');
+                if (!section) return;
+
+                // Zaten eklenmişse tekrar ekleme
+                if (document.getElementById('orp-booking-app')) return;
+
+                // Eski formu gizle
+                var oldForm = document.getElementById('booking-form');
+                if (oldForm) {
+                    oldForm.style.display = 'none';
+                }
+
+                // Yeni sistemi ana sayfadaki o bölüme yerleştir
+                var container = document.createElement('div');
+                container.style.width = '100%';
+                container.style.maxWidth = '840px';
+                container.style.margin = '20px auto';
+                container.innerHTML = <?php echo json_encode($app_html); ?>;
+
+                section.appendChild(container);
+
+                // Scriptleri çalıştır
+                setTimeout(function() {
+                    var dp = document.getElementById('orp-date-picker');
+                    if (dp && typeof orpLoadSlots === 'function') {
+                        orpLoadSlots(dp.value);
                     }
-                });
+                }, 300);
             }
+
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', rerouteLinks);
+                document.addEventListener('DOMContentLoaded', injectBookingApp);
             } else {
-                rerouteLinks();
+                injectBookingApp();
             }
-            setInterval(rerouteLinks, 800);
+            setTimeout(injectBookingApp, 500);
+            setTimeout(injectBookingApp, 1500);
         })();
         </script>
         <?php
