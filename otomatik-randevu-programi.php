@@ -3,7 +3,7 @@
  * Plugin Name: Otomatik Randevu Programı — Danışan, Çoklu Danışman & Sekreter 3'lü Mutabakat Sistemi
  * Plugin URI: https://example.com/otomatik-randevu-programi
  * Description: Danışanın kendi iradesiyle onaylayıp WhatsApp grubuna katıldığı, gün ve saat önerdiği; Danışman ve Sekreter Hanım ile 3 kişi mutabık kalana kadar müzakerenin sürdüğü, mutabakat sağlandığında sitenin takviminde o gün ve saatin otomatik kapatıldığı ve e-posta bildirimlerinin gönderildiği tam otomatik WordPress randevu eklentisi. Sayfaya eklemek için [otomatik_randevu] kısa kodunu kullanın.
- * Version: 3.0.0
+ * Version: 3.2.0
  * Author: Selim
  * Text Domain: otomatik-randevu
  */
@@ -1675,39 +1675,37 @@ class Otomatik_Randevu_Programi {
         <script>
         (function() {
             function insertBigButton() {
-                var form = document.getElementById('booking-form');
-                if (!form) return;
-
-                // Zaten buton eklenmişse tekrar ekleme
                 if (document.getElementById('orp-big-cta-btn')) return;
 
                 // 'çift ve aile görüşmesi' içeren kutuyu veya son service-summary kutusunu bul
-                var summaries = form.querySelectorAll('.service-summary');
+                var summaries = document.querySelectorAll('.service-summary');
                 var targetBox = null;
-                summaries.forEach(function(box) {
-                    if (box.textContent.includes('çift') || box.textContent.includes('aile')) {
+                for (var i = 0; i < summaries.length; i++) {
+                    var box = summaries[i];
+                    var txt = (box.textContent || box.innerText || '').toLowerCase();
+                    if (txt.indexOf('çift') !== -1 || txt.indexOf('aile') !== -1) {
                         targetBox = box;
                     }
-                });
+                }
                 if (!targetBox && summaries.length > 0) {
                     targetBox = summaries[summaries.length - 1];
                 }
 
-                if (targetBox) {
-                    // Eski form adımlarını ve eski butonu gizle
-                    var oldNext = form.querySelector('.next-step');
-                    if (oldNext) oldNext.style.display = 'none';
+                if (targetBox && targetBox.parentNode) {
+                    // Eski sonraki adım butonlarını gizle
+                    var oldBtns = document.querySelectorAll('.booking-form .next-step, #booking-form .next-step');
+                    oldBtns.forEach(function(b) { b.style.display = 'none'; });
 
                     // Kocaman dikkat çekici Randevu Al butonu oluştur
                     var btn = document.createElement('a');
                     btn.id = 'orp-big-cta-btn';
                     btn.href = 'https://selimbayanoglu.com.tr/randevu-al/';
                     btn.innerText = '📅 RANDEVU AL (GÜN & SAAT SEÇİN) ➔';
-                    btn.style.cssText = 'display: block !important; width: 100% !important; text-align: center !important; background: #111827 !important; color: #ffffff !important; font-size: 16px !important; font-weight: 800 !important; padding: 18px 20px !important; border-radius: 12px !important; margin-top: 18px !important; text-decoration: none !important; box-shadow: 0 8px 24px rgba(0,0,0,0.18) !important; letter-spacing: 0.5px !important; transition: all 0.2s ease !important; border: 2px solid #1f2937 !important; box-sizing: border-box !important;';
+                    btn.style.cssText = 'display: block !important; width: 100% !important; text-align: center !important; background: #111827 !important; color: #ffffff !important; font-size: 17px !important; font-weight: 800 !important; padding: 18px 20px !important; border-radius: 12px !important; margin-top: 16px !important; margin-bottom: 12px !important; text-decoration: none !important; box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important; letter-spacing: 0.5px !important; transition: all 0.2s ease !important; border: 2px solid #1f2937 !important; box-sizing: border-box !important; cursor: pointer !important;';
 
                     btn.onmouseover = function() {
-                        this.style.background = '#0f766e';
-                        this.style.borderColor = '#0f766e';
+                        this.style.background = '#0d9488';
+                        this.style.borderColor = '#0d9488';
                         this.style.transform = 'translateY(-2px)';
                     };
                     btn.onmouseout = function() {
@@ -1725,7 +1723,14 @@ class Otomatik_Randevu_Programi {
             } else {
                 insertBigButton();
             }
-            setInterval(insertBigButton, 600);
+            // Sayfa dinamik veya geç yükleniyorsa yakala
+            var timer = setInterval(function() {
+                insertBigButton();
+                if (document.getElementById('orp-big-cta-btn')) {
+                    clearInterval(timer);
+                }
+            }, 300);
+            setTimeout(function() { clearInterval(timer); }, 10000);
         })();
         </script>
         <?php
