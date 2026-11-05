@@ -24,6 +24,9 @@
         <button type="button" id="tabStep3" class="px-2.5 py-1 rounded-lg text-xs font-bold text-[var(--foreground)] cursor-pointer transition">
           3️⃣ Sitedeki Takvim &amp; Mailler
         </button>
+        <button type="button" id="tabStep4" class="px-2.5 py-1 rounded-lg text-xs font-bold text-[var(--foreground)] cursor-pointer transition">
+          4️⃣ 🔐 Danışman Girişi &amp; İptal
+        </button>
       </div>
     </div>
 
@@ -194,6 +197,34 @@
         <div id="sentEmailsBox" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
       </div>
     </div>
+
+    <!-- SEKME 4: DANIŞMAN GİRİŞİ & RANDVEU İPTAL PANELI -->
+    <div id="viewStep4" class="hidden">
+      <!-- Giriş Formu -->
+      <div id="admLoginForm" class="max-w-xs mx-auto p-4 bg-[var(--background)] border border-[var(--border)] rounded-2xl text-center space-y-3">
+        <div class="text-xs font-bold text-emerald-500">🔐 Danışman / Yönetici Girişi</div>
+        <p class="text-xs text-[var(--muted-foreground)]">Randevuları iptal etmek ve takvimdeki saati yeniden açmak için şifrenizi girin:</p>
+        <input type="password" id="admPassInput" placeholder="Şifreniz (Varsayılan: 123456)" class="w-full px-3 py-2 text-center text-xs font-semibold rounded-lg border border-[var(--border)] bg-[var(--card)]">
+        <button type="button" id="btnAdmLogin" class="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer transition">
+          Giriş Yap
+        </button>
+      </div>
+
+      <!-- Giriş Yapıldığında Görünecek İptal Masası -->
+      <div id="admDashboard" class="hidden space-y-3">
+        <div class="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+          <div>
+            <div class="text-xs font-bold text-emerald-500">👨‍⚕️ Danışman Randevu Yönetim &amp; İptal Masası</div>
+            <div class="text-[11px] text-[var(--muted-foreground)]">İptal ettiğiniz randevunun saati web sitenizdeki takvimde <b>otomatik olarak anında açılır</b>.</div>
+          </div>
+          <button type="button" id="btnAdmLogout" class="px-2.5 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] text-xs font-semibold cursor-pointer">
+            Çıkış
+          </button>
+        </div>
+
+        <div id="admAppointmentsList" class="space-y-2"></div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -233,7 +264,7 @@
       ];
 
       function switchTab(tabId) {
-        ['tabStep1', 'tabStep2', 'tabStep3'].forEach(id => {
+        ['tabStep1', 'tabStep2', 'tabStep3', 'tabStep4'].forEach(id => {
           const b = document.getElementById(id);
           b.className = id === tabId
             ? 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white cursor-pointer transition'
@@ -242,12 +273,14 @@
         document.getElementById('viewStep1').classList.toggle('hidden', tabId !== 'tabStep1');
         document.getElementById('viewStep2').classList.toggle('hidden', tabId !== 'tabStep2');
         document.getElementById('viewStep3').classList.toggle('hidden', tabId !== 'tabStep3');
+        document.getElementById('viewStep4').classList.toggle('hidden', tabId !== 'tabStep4');
         renderAll();
       }
 
       document.getElementById('tabStep1').addEventListener('click', () => switchTab('tabStep1'));
       document.getElementById('tabStep2').addEventListener('click', () => switchTab('tabStep2'));
       document.getElementById('tabStep3').addEventListener('click', () => switchTab('tabStep3'));
+      document.getElementById('tabStep4').addEventListener('click', () => switchTab('tabStep4'));
 
       function populateTimeSelects() {
         ['inpPropTime', 'counterTime'].forEach(selId => {
@@ -345,7 +378,69 @@
           `;
           mailBox.appendChild(item);
         });
+
+        // Sekme 4: Danışman Randevu Listesi ve İptal Butonu
+        const admList = document.getElementById('admAppointmentsList');
+        if (admList) {
+          admList.innerHTML = `
+            <div class="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-between">
+              <div>
+                <div class="font-bold text-xs text-[var(--foreground)]">#${negotiation.code} — ${negotiation.clientName}</div>
+                <div class="text-xs text-[var(--muted-foreground)]">📅 ${negotiation.date} saat ${negotiation.time} (${negotiation.clientPhone})</div>
+                <div class="text-xs font-semibold mt-1 ${negotiation.cancelled ? 'text-red-500' : (negotiation.finalized ? 'text-emerald-500' : 'text-amber-500')}">
+                  Durum: ${negotiation.cancelled ? '❌ İptal Edildi (Saat Açık)' : (negotiation.finalized ? '🔒 Kesinleşti & Sitede Kilitli' : '⏳ Müzakerede')}
+                </div>
+              </div>
+              <div>
+                ${!negotiation.cancelled ? `
+                  <button type="button" id="btnCancelAppointment" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs cursor-pointer shadow transition flex items-center gap-1">
+                    <span>❌ Randevuyu İptal Et &amp; Saati Aç</span>
+                  </button>
+                ` : `<span class="text-xs text-[var(--muted-foreground)]">Saat Açık</span>`}
+              </div>
+            </div>
+          `;
+          const cancelBtn = document.getElementById('btnCancelAppointment');
+          if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+              if (confirm(`#${negotiation.code} numaralı randevuyu iptal etmek ve sitede ${negotiation.time} saatini YENİDEN AÇMAK istiyor musunuz?`)) {
+                negotiation.cancelled = true;
+                negotiation.finalized = false;
+                lockedSlots = lockedSlots.filter(t => t !== negotiation.time);
+                negotiation.history.unshift(`❌ DANIŞMAN RANDEVUYU İPTAL ETTİ: ${negotiation.date} saat ${negotiation.time} takvimde yeniden açıldı.`);
+                emails.unshift({
+                  to: 'danisman@siteniz.com, sekreter@ofis.com, danisan@eposta.com',
+                  subject: `❌ İptal Bildirimi: #${negotiation.code} (${negotiation.clientName})`,
+                  body: `Randevu Danışman tarafından iptal edilmiş ve takvimdeki ${negotiation.time} saati diğer danışanlara yeniden açılmıştır.`
+                });
+                alert('✅ Randevu başarıyla iptal edildi ve sitedeki saat tekrar açıldı!');
+                renderAll();
+              }
+            });
+          }
+        }
       }
+
+      // Sekme 4 Login / Logout Olayları
+      let isAdminLoggedIn = false;
+      document.getElementById('btnAdmLogin').addEventListener('click', () => {
+        const pass = document.getElementById('admPassInput').value.trim();
+        if (pass === '123456' || pass === 'admin') {
+          isAdminLoggedIn = true;
+          document.getElementById('admLoginForm').classList.add('hidden');
+          document.getElementById('admDashboard').classList.remove('hidden');
+          renderAll();
+        } else {
+          alert('Hatalı şifre! (Varsayılan şifre: 123456)');
+        }
+      });
+
+      document.getElementById('btnAdmLogout').addEventListener('click', () => {
+        isAdminLoggedIn = false;
+        document.getElementById('admLoginForm').classList.remove('hidden');
+        document.getElementById('admDashboard').classList.add('hidden');
+        document.getElementById('admPassInput').value = '';
+      });
 
       // Adım 1: Siteden Diyaloğu Başlat
       document.getElementById('btnStartDialogue').addEventListener('click', () => {

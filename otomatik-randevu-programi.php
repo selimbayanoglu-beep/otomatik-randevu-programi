@@ -38,10 +38,22 @@ class Otomatik_Randevu_Programi {
         add_action('wp_ajax_orp_lookup_appointment', array($this, 'ajax_lookup_appointment'));
         add_action('wp_ajax_nopriv_orp_lookup_appointment', array($this, 'ajax_lookup_appointment'));
 
+        // Danışman Girişi ve İptal AJAX Uç Noktaları
+        add_action('wp_ajax_orp_admin_login', array($this, 'ajax_admin_login'));
+        add_action('wp_ajax_nopriv_orp_admin_login', array($this, 'ajax_admin_login'));
+
+        add_action('wp_ajax_orp_admin_list', array($this, 'ajax_admin_list'));
+        add_action('wp_ajax_nopriv_orp_admin_list', array($this, 'ajax_admin_list'));
+
+        add_action('wp_ajax_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
+        add_action('wp_ajax_nopriv_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
+
         // Hermes Agent & Dış Webhook Entegrasyonu
         add_action('rest_api_init', array($this, 'register_hermes_routes'));
         add_action('wp_ajax_orp_hermes_finalize', array($this, 'ajax_hermes_finalize'));
         add_action('wp_ajax_nopriv_orp_hermes_finalize', array($this, 'ajax_hermes_finalize'));
+        add_action('wp_ajax_orp_hermes_cancel', array($this, 'ajax_hermes_cancel'));
+        add_action('wp_ajax_nopriv_orp_hermes_cancel', array($this, 'ajax_hermes_cancel'));
     }
 
     /**
@@ -53,6 +65,34 @@ class Otomatik_Randevu_Programi {
             'callback'            => array($this, 'rest_hermes_finalize'),
             'permission_callback' => '__return_true'
         ));
+
+        register_rest_route('otomatik-randevu/v1', '/cancel', array(
+            'methods'             => 'POST',
+            'callback'            => array($this, 'rest_hermes_cancel'),
+            'permission_callback' => '__return_true'
+        ));
+    }
+
+    public function rest_hermes_cancel($request) {
+        $params = $request->get_json_params() ?: $request->get_params();
+        $code = isset($params['booking_code']) ? sanitize_text_field($params['booking_code']) : '';
+        $reason = isset($params['reason']) ? sanitize_text_field($params['reason']) : 'WhatsApp üzerinden iptal edildi';
+        $res = $this->cancel_appointment_internal($code, $reason, 'Hermes Agent');
+        if ($res['success']) {
+            return new WP_REST_Response($res, 200);
+        }
+        return new WP_REST_Response($res, 400);
+    }
+
+    public function ajax_hermes_cancel() {
+        $code = isset($_POST['booking_code']) ? sanitize_text_field($_POST['booking_code']) : '';
+        $reason = isset($_POST['reason']) ? sanitize_text_field($_POST['reason']) : 'WhatsApp üzerinden iptal';
+        $res = $this->cancel_appointment_internal($code, $reason, 'Hermes Agent');
+        if ($res['success']) {
+            wp_send_json_success($res);
+        } else {
+            wp_send_json_error($res);
+        }
     }
 
     public function rest_hermes_finalize($request) {
@@ -174,6 +214,7 @@ class Otomatik_Randevu_Programi {
             'break_end'           => '13:30',
             'work_days'           => array(1, 2, 3, 4, 5, 6),
             'blocked_dates'       => '',
+            'admin_passcode'      => '123456',
             'voluntary_text'      => 'Danışmanlık ve ofis sekreteryası koordinasyon WhatsApp grubuna kendi özgür irademle katıldığımı, randevu gün ve saat mutabakatının bu iletişim kanalı üzerinden yürütülmesini onayladığımı beyan ederim.',
             'services'            => array(
                 array(
@@ -706,8 +747,113 @@ class Otomatik_Randevu_Programi {
     }
 
     /**
-     * AJAX: Takip kodu ile sorgulama
+     * Danışman / Yönetici Şifre Doğrulama (Ön Yüzden Giriş)
      */
+    public function ajax_admin_login() {
+        check_ajax_referer('orp_public_nonce', 'nonce');
+        $passcode = isset($_POST['passcode']) ? sanitize_text_field($_POST['passcode']) : '';
+        $settings = $this->get_settings();
+        $correct = !empty($settings['admin_passcode']) ? $settings['admin_passcode'] : '123456';
+
+        if (current_user_can('manage_options') || $passcode === $correct) {
+            wp_send_json_success(array(
+                'authenticated' => true,
+                'token'         => md5($correct . date('Y-m-d')),
+                'message'       => 'Danışman girişi başarılı.'
+            ));
+        } else {
+            wp_send_json_error(array('message' => 'Hatalı yönetici şifresi.'));
+        }
+    }
+
+    /**
+     * Danışman İçin Tüm Randevuları Listele
+     */
+    public function ajax_admin_list() {
+        check_ajax_referer('orp_public_nonce', 'nonce');
+        $token = isset($_POST['token']) ? sanitize_text_field($_POST['token']) : '';
+        $settings = $this->get_settings();
+        $correct = !empty($settings['admin_passcode']) ? $settings['admin_passcode'] : '123456';
+
+        if (!current_user_can('manage_options') && $token !== md5($correct . date('Y-m-d'))) {
+            wp_send_json_error(array('message' => 'Oturum süresi doldu veya yetkisiz erişim.'));
+        }
+
+        global $wpdb;
+        $rows = $wpdb->get_results("SELECT * FROM {$this->table_name} ORDER BY appointment_date DESC, appointment_time DESC LIMIT 100", ARRAY_A);
+        wp_send_json_success($rows);
+    }
+
+    /**
+     * Randevuyu İptal Et (Sitede Saati Yeniden Aç)
+     */
+    public function ajax_cancel_appointment() {
+        check_ajax_referer('orp_public_nonce', 'nonce');
+        $token = isset($_POST['token']) ? sanitize_text_field($_POST['token']) : '';
+        $code  = isset($_POST['booking_code']) ? sanitize_text_field($_POST['booking_code']) : '';
+        $settings = $this->get_settings();
+        $correct = !empty($settings['admin_passcode']) ? $settings['admin_passcode'] : '123456';
+
+        if (!current_user_can('manage_options') && $token !== md5($correct . date('Y-m-d'))) {
+            wp_send_json_error(array('message' => 'Yetkisiz işlem.'));
+        }
+
+        $res = $this->cancel_appointment_internal($code, 'Danışman tarafından iptal edildi.', 'Danışman');
+        if ($res['success']) {
+            wp_send_json_success($res);
+        } else {
+            wp_send_json_error($res);
+        }
+    }
+
+    /**
+     * İç İptal Mantığı: Status = 'cancelled' yapar, log yazar, saati takvimde açar, mail atar
+     */
+    public function cancel_appointment_internal($booking_code, $reason, $by = 'Danışman') {
+        global $wpdb;
+        $code = ltrim(strtoupper(sanitize_text_field($booking_code)), '#');
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table_name} WHERE booking_code = %s", $code), ARRAY_A);
+
+        if (!$row) {
+            return array('success' => false, 'message' => 'Randevu bulunamadı.');
+        }
+
+        $logs = !empty($row['proposal_log']) ? json_decode($row['proposal_log'], true) : array();
+        $logs[] = array(
+            'time'   => current_time('mysql'),
+            'by'     => $by,
+            'action' => "❌ RANDEVU İPTAL EDİLDİ: $reason. Takvimdeki bu saat tekrar açık/müsait hale getirildi."
+        );
+
+        $wpdb->update($this->table_name, array(
+            'status'       => 'cancelled',
+            'proposal_log' => wp_json_encode($logs, JSON_UNESCAPED_UNICODE)
+        ), array('id' => $row['id']));
+
+        // İptal Bildirim E-postası Gönder
+        $settings = $this->get_settings();
+        $recipients = array();
+        if (!empty($settings['consultant_email'])) $recipients[] = $settings['consultant_email'];
+        if (!empty($settings['secretary_email'])) $recipients[] = $settings['secretary_email'];
+        if (!empty($row['client_email'])) $recipients[] = $row['client_email'];
+
+        if (!empty($recipients)) {
+            $subj = sprintf('[%s] Randevu İptali: %s (%s %s)', $settings['office_name'], $row['client_name'], $row['appointment_date'], $row['appointment_time']);
+            $body = "Bilgilendirme,\n\n#" . $row['booking_code'] . " takip kodlu randevu " . $by . " tarafından İPTAL EDİLMİŞTİR.\n";
+            $body .= "Gerekçe: " . $reason . "\n\n";
+            $body .= "Web sitemizdeki takvimde " . $row['appointment_date'] . " " . $row['appointment_time'] . " saati yeniden MÜSAİT (BOŞ) hale getirilmiştir.\n\n";
+            $body .= get_bloginfo('name');
+            wp_mail($recipients, $subj, $body, array('Content-Type: text/plain; charset=UTF-8'));
+        }
+
+        return array(
+            'success'      => true,
+            'booking_code' => $code,
+            'date'         => $row['appointment_date'],
+            'time'         => $row['appointment_time'],
+            'message'      => "Randevu (#$code) başarıyla iptal edildi. Takvimde {$row['appointment_date']} {$row['appointment_time']} saati yeniden açıldı!"
+        );
+    }
     public function ajax_lookup_appointment() {
         check_ajax_referer('orp_public_nonce', 'nonce');
         global $wpdb;
@@ -880,6 +1026,7 @@ class Otomatik_Randevu_Programi {
             <div class="orp-tabs">
                 <button type="button" class="orp-tab-btn active" onclick="orpSwitchTab('new')">1️⃣ Randevu Başlat & İrade Onayı</button>
                 <button type="button" class="orp-tab-btn" onclick="orpSwitchTab('track')">2️⃣ 3'lü Mutabakat Takibi</button>
+                <button type="button" class="orp-tab-btn" onclick="orpSwitchTab('admin')">3️⃣ 🔐 Danışman Girişi & İptal</button>
             </div>
 
             <div class="orp-content">
@@ -1055,6 +1202,32 @@ class Otomatik_Randevu_Programi {
                         <div id="orp-trk-timeline"></div>
                     </div>
                 </div>
+
+                <!-- 3. SEKME: Danışman Girişi ve Randevu İptal Paneli -->
+                <div id="orp-pane-admin" class="orp-pane">
+                    <!-- Giriş Formu (Eğer oturum açılmadıysa) -->
+                    <div id="orp-admin-login-box" style="max-width:380px; margin:20px auto; text-align:center; padding:24px; border:1.5px solid #cbd5e1; border-radius:14px; background:#f8fafc;">
+                        <h3 style="margin:0 0 8px; font-size:16px; color:#0f172a;">🔐 Danışman / Yönetici Girişi</h3>
+                        <p style="font-size:13px; color:#64748b; margin-bottom:16px;">Tüm randevuları görmek ve dilediğinizi iptal edip saati açmak için şifrenizi girin.</p>
+                        <input type="password" id="orp-admin-passcode" class="orp-form-control" placeholder="Yönetici Şifreniz" style="text-align:center; font-size:16px; margin-bottom:12px;" />
+                        <button type="button" class="orp-btn-submit" onclick="orpAdminLogin()">Giriş Yap</button>
+                    </div>
+
+                    <!-- Giriş Yapıldığında Görünecek Yönetim & İptal Masası -->
+                    <div id="orp-admin-dashboard" style="display:none;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                            <div>
+                                <h3 style="margin:0; font-size:16px; color:#0f766e;">👨‍⚕️ Danışman Randevu &amp; İptal Masası</h3>
+                                <p style="margin:4px 0 0; font-size:12px; color:#64748b;">İptal ettiğiniz randevunun saati web sitenizdeki takvimde <b>otomatik olarak yeniden açılır</b>.</p>
+                            </div>
+                            <button type="button" class="orp-btn-submit" style="width:auto; padding:8px 16px; font-size:12px; background:#64748b;" onclick="orpAdminLogout()">Çıkış Yap</button>
+                        </div>
+
+                        <div id="orp-admin-table-container" style="overflow-x:auto;">
+                            <em>Randevular yükleniyor...</em>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1062,6 +1235,7 @@ class Otomatik_Randevu_Programi {
             var orpAjaxUrl = "<?php echo esc_url($ajax_url); ?>";
             var orpNonce   = "<?php echo esc_js($nonce); ?>";
             var orpCurrentCode = "";
+            var orpAdminToken = "";
 
             function orpSwitchTab(tab) {
                 document.querySelectorAll('.orp-tab-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -1069,10 +1243,104 @@ class Otomatik_Randevu_Programi {
                 if(tab === 'new') {
                     document.querySelectorAll('.orp-tab-btn')[0].classList.add('active');
                     document.getElementById('orp-pane-new').classList.add('active');
-                } else {
+                } else if(tab === 'track') {
                     document.querySelectorAll('.orp-tab-btn')[1].classList.add('active');
                     document.getElementById('orp-pane-track').classList.add('active');
+                } else if(tab === 'admin') {
+                    document.querySelectorAll('.orp-tab-btn')[2].classList.add('active');
+                    document.getElementById('orp-pane-admin').classList.add('active');
+                    if(orpAdminToken) { orpAdminLoadList(); }
                 }
+            }
+
+            function orpAdminLogin() {
+                var pass = document.getElementById('orp-admin-passcode').value;
+                if(!pass) { alert('Lütfen şifrenizi girin.'); return; }
+                var fd = new FormData();
+                fd.append('action', 'orp_admin_login');
+                fd.append('nonce', orpNonce);
+                fd.append('passcode', pass);
+
+                fetch(orpAjaxUrl, { method: 'POST', body: fd })
+                    .then(function(r){ return r.json(); })
+                    .then(function(res){
+                        if(!res.success) {
+                            alert(res.data.message || 'Hatalı şifre.');
+                            return;
+                        }
+                        orpAdminToken = res.data.token;
+                        document.getElementById('orp-admin-login-box').style.display = 'none';
+                        document.getElementById('orp-admin-dashboard').style.display = 'block';
+                        orpAdminLoadList();
+                    });
+            }
+
+            function orpAdminLogout() {
+                orpAdminToken = "";
+                document.getElementById('orp-admin-login-box').style.display = 'block';
+                document.getElementById('orp-admin-dashboard').style.display = 'none';
+                document.getElementById('orp-admin-passcode').value = "";
+            }
+
+            function orpAdminLoadList() {
+                var c = document.getElementById('orp-admin-table-container');
+                c.innerHTML = "<em>Yükleniyor...</em>";
+                var fd = new FormData();
+                fd.append('action', 'orp_admin_list');
+                fd.append('nonce', orpNonce);
+                fd.append('token', orpAdminToken);
+
+                fetch(orpAjaxUrl, { method:'POST', body: fd })
+                    .then(function(r){ return r.json(); })
+                    .then(function(res){
+                        if(!res.success) { c.innerHTML = '<div style="color:red;">Erişim hatası.</div>'; return; }
+                        var rows = res.data || [];
+                        if(rows.length === 0) { c.innerHTML = '<div>Henüz randevu kaydı yok.</div>'; return; }
+                        var html = '<table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">';
+                        html += '<tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;"><th style="padding:10px;">Kod</th><th style="padding:10px;">Danışan</th><th style="padding:10px;">Tarih/Saat</th><th style="padding:10px;">Durum</th><th style="padding:10px;">İşlem</th></tr>';
+                        rows.forEach(function(r){
+                            var stBadge = r.status === 'approved' ? '<span class="orp-badge orp-badge-final">🔒 Kesinleşti</span>' : (r.status === 'cancelled' ? '<span class="orp-badge" style="background:#fee2e2;color:#991b1b;">❌ İptal Edildi</span>' : '<span class="orp-badge orp-badge-wait">⏳ Müzakerede</span>');
+                            html += '<tr style="border-bottom:1px solid #e2e8f0;">';
+                            html += '<td style="padding:10px;"><strong>#' + r.booking_code + '</strong></td>';
+                            html += '<td style="padding:10px;">' + r.client_name + '<br><small style="color:#64748b;">' + r.client_phone + '</small></td>';
+                            html += '<td style="padding:10px;"><strong>' + r.appointment_date + '</strong><br>' + r.appointment_time + '</td>';
+                            html += '<td style="padding:10px;">' + stBadge + '</td>';
+                            html += '<td style="padding:10px;">';
+                            if(r.status !== 'cancelled') {
+                                html += '<button type="button" style="padding:6px 12px; background:#ef4444; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;" onclick="orpCancelAppointment(\'' + r.booking_code + '\')">❌ İptal Et (Saati Aç)</button>';
+                            } else {
+                                html += '<small style="color:#94a3b8;">Saat Açık</small>';
+                            }
+                            html += '</td></tr>';
+                        });
+                        html += '</table>';
+                        c.innerHTML = html;
+                    });
+            }
+
+            function orpCancelAppointment(code) {
+                if(!confirm('#' + code + ' numaralı randevuyu iptal etmek ve sitenizdeki bu saati YENİDEN AÇMAK istediğinize emin misiniz?')) {
+                    return;
+                }
+                var fd = new FormData();
+                fd.append('action', 'orp_cancel_appointment');
+                fd.append('nonce', orpNonce);
+                fd.append('token', orpAdminToken);
+                fd.append('booking_code', code);
+
+                fetch(orpAjaxUrl, { method:'POST', body: fd })
+                    .then(function(r){ return r.json(); })
+                    .then(function(res){
+                        if(!res.success) {
+                            alert(res.data.message || 'İptal işlemi başarısız.');
+                            return;
+                        }
+                        alert('✅ ' + res.data.message);
+                        orpAdminLoadList();
+                        // Tarih seçiciyi de yenile
+                        var dp = document.getElementById('orp-date-picker');
+                        if(dp) orpLoadSlots(dp.value);
+                    });
             }
 
             function orpLoadSlots(dateStr) {
