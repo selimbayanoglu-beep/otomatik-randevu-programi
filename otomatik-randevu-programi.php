@@ -48,8 +48,8 @@ class Otomatik_Randevu_Programi {
         add_action('wp_ajax_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
         add_action('wp_ajax_nopriv_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
 
-        // Ana Sayfadaki Eski Randevu Bölümünü Yeni Sistem ile Değiştir
-        add_action('wp_footer', array($this, 'replace_homepage_booking_section'));
+        // Çift ve Aile Görüşmesinin Altına Kocaman Randevu Al Butonu Ekle
+        add_action('wp_footer', array($this, 'inject_big_appointment_button'));
 
         // Hermes Agent & Dış Webhook Entegrasyonu
         add_action('rest_api_init', array($this, 'register_hermes_routes'));
@@ -1668,57 +1668,64 @@ class Otomatik_Randevu_Programi {
     }
 
     /**
-     * Ana Sayfadaki Eski Randevu Bölümünü Doğrudan Yeni 3'lü Mutabakat Sistemi ile Değiştirir
+     * Sağ Taraftaki 'Çift ve Aile Görüşmesi' Altına Kocaman 'Randevu Al' Butonu Ekler
      */
-    public function replace_homepage_booking_section() {
-        // Eğer zaten [otomatik_randevu] kısa kodu sayfada varsa tekrar enjekte etme
-        global $post;
-        if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'otomatik_randevu')) {
-            return;
-        }
-
-        $app_html = $this->render_booking_shortcode(array());
+    public function inject_big_appointment_button() {
         ?>
         <script>
         (function() {
-            function injectBookingApp() {
-                var section = document.getElementById('randevu');
-                if (!section) return;
+            function insertBigButton() {
+                var form = document.getElementById('booking-form');
+                if (!form) return;
 
-                // Zaten eklenmişse tekrar ekleme
-                if (document.getElementById('orp-booking-app')) return;
+                // Zaten buton eklenmişse tekrar ekleme
+                if (document.getElementById('orp-big-cta-btn')) return;
 
-                // Eski formu gizle
-                var oldForm = document.getElementById('booking-form');
-                if (oldForm) {
-                    oldForm.style.display = 'none';
+                // 'çift ve aile görüşmesi' içeren kutuyu veya son service-summary kutusunu bul
+                var summaries = form.querySelectorAll('.service-summary');
+                var targetBox = null;
+                summaries.forEach(function(box) {
+                    if (box.textContent.includes('çift') || box.textContent.includes('aile')) {
+                        targetBox = box;
+                    }
+                });
+                if (!targetBox && summaries.length > 0) {
+                    targetBox = summaries[summaries.length - 1];
                 }
 
-                // Yeni sistemi ana sayfadaki o bölüme yerleştir
-                var container = document.createElement('div');
-                container.style.width = '100%';
-                container.style.maxWidth = '840px';
-                container.style.margin = '20px auto';
-                container.innerHTML = <?php echo json_encode($app_html); ?>;
+                if (targetBox) {
+                    // Eski form adımlarını ve eski butonu gizle
+                    var oldNext = form.querySelector('.next-step');
+                    if (oldNext) oldNext.style.display = 'none';
 
-                section.appendChild(container);
+                    // Kocaman dikkat çekici Randevu Al butonu oluştur
+                    var btn = document.createElement('a');
+                    btn.id = 'orp-big-cta-btn';
+                    btn.href = 'https://selimbayanoglu.com.tr/randevu-al/';
+                    btn.innerText = '📅 RANDEVU AL (GÜN & SAAT SEÇİN) ➔';
+                    btn.style.cssText = 'display: block !important; width: 100% !important; text-align: center !important; background: #111827 !important; color: #ffffff !important; font-size: 16px !important; font-weight: 800 !important; padding: 18px 20px !important; border-radius: 12px !important; margin-top: 18px !important; text-decoration: none !important; box-shadow: 0 8px 24px rgba(0,0,0,0.18) !important; letter-spacing: 0.5px !important; transition: all 0.2s ease !important; border: 2px solid #1f2937 !important; box-sizing: border-box !important;';
 
-                // Scriptleri çalıştır
-                setTimeout(function() {
-                    var dp = document.getElementById('orp-date-picker');
-                    if (dp && typeof orpLoadSlots === 'function') {
-                        orpLoadSlots(dp.value);
-                    }
-                }, 300);
+                    btn.onmouseover = function() {
+                        this.style.background = '#0f766e';
+                        this.style.borderColor = '#0f766e';
+                        this.style.transform = 'translateY(-2px)';
+                    };
+                    btn.onmouseout = function() {
+                        this.style.background = '#111827';
+                        this.style.borderColor = '#1f2937';
+                        this.style.transform = 'translateY(0)';
+                    };
+
+                    targetBox.parentNode.insertBefore(btn, targetBox.nextSibling);
+                }
             }
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', injectBookingApp);
+                document.addEventListener('DOMContentLoaded', insertBigButton);
             } else {
-                injectBookingApp();
+                insertBigButton();
             }
-            setTimeout(injectBookingApp, 500);
-            setTimeout(injectBookingApp, 1500);
+            setInterval(insertBigButton, 600);
         })();
         </script>
         <?php
