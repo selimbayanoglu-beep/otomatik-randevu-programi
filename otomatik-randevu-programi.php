@@ -48,6 +48,9 @@ class Otomatik_Randevu_Programi {
         add_action('wp_ajax_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
         add_action('wp_ajax_nopriv_orp_cancel_appointment', array($this, 'ajax_cancel_appointment'));
 
+        // Menüdeki Randevu Linkini Otomatik Yeni Sayfaya Yönlendir
+        add_action('wp_footer', array($this, 'auto_redirect_menu_link'));
+
         // Hermes Agent & Dış Webhook Entegrasyonu
         add_action('rest_api_init', array($this, 'register_hermes_routes'));
         add_action('wp_ajax_orp_hermes_finalize', array($this, 'ajax_hermes_finalize'));
@@ -1661,6 +1664,41 @@ class Otomatik_Randevu_Programi {
                 </form>
             <?php endif; ?>
         </div>
+        <?php
+    }
+
+    /**
+     * Sitedeki Menü ve Butonlardaki Randevu Linklerini Otomatik Yeni Sayfaya Yönlendirir
+     */
+    public function auto_redirect_menu_link() {
+        ?>
+        <script>
+        (function() {
+            function rerouteLinks() {
+                var links = document.querySelectorAll('a[href="#randevu"], a[href*="#randevu"], nav.drawer a, header a, a.button');
+                links.forEach(function(el) {
+                    var txt = (el.textContent || '').toLowerCase();
+                    var href = el.getAttribute('href') || '';
+                    if (txt.includes('randevu') || href === '#randevu' || href.endsWith('#randevu')) {
+                        if (!href.includes('/randevu-al/')) {
+                            el.setAttribute('href', 'https://selimbayanoglu.com.tr/randevu-al/');
+                            el.onclick = function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                window.location.href = 'https://selimbayanoglu.com.tr/randevu-al/';
+                            };
+                        }
+                    }
+                });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', rerouteLinks);
+            } else {
+                rerouteLinks();
+            }
+            setInterval(rerouteLinks, 800);
+        })();
+        </script>
         <?php
     }
 }
